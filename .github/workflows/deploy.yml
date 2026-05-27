@@ -1,28 +1,44 @@
-name: Deploy to Hostinger
+name: Build & Deploy to Hostinger
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          node-version: 20
-          cache: npm
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: npm ci
-      - run: npm run build
+      - name: Install lftp
+        run: sudo apt-get install -y --no-install-recommends lftp
 
-      - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./dist/
-          server-dir: ${{ secrets.FTP_REMOTE_PATH }}
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Hostinger via FTP
+        env:
+          FTP_SERVER:      ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME:    ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD:    ${{ secrets.FTP_PASSWORD }}
+          FTP_REMOTE_PATH: ${{ secrets.FTP_REMOTE_PATH }}
+        run: |
+          lftp -c "set ssl:verify-certificate no; open -u $FTP_USERNAME,$FTP_PASSWORD $FTP_SERVER; mirror -R --parallel=5 ./dist/ $FTP_REMOTE_PATH"
